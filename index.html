@@ -1,0 +1,51 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Crypto Regime Ticker</title>
+<style>
+  body{font-family:ui-monospace,Menlo,Consolas,monospace;margin:16px}
+  pre{border:1px solid #ddd;border-radius:10px;padding:14px;max-width:980px;white-space:pre-wrap;line-height:1.45}
+  .muted{color:#666;font-size:12px;margin-top:8px}
+</style>
+<pre id="t">Loading…</pre>
+<div class="muted" id="m"></div>
+<script>
+(async()=>{
+  const t=document.getElementById("t"), m=document.getElementById("m");
+  try{
+    const j=await (await fetch("data.json?"+Date.now(),{cache:"no-store"})).json();
+    const f=(x,d=2)=>Number.isFinite(x)?x.toFixed(d):"—";
+    t.textContent=
+`24H
+BD:  ${f(j.BD.v,2)}% (Δ ${f(j.BD.d24,2)}%)
+ASI: ${j.ASI.v??"—"}/100 (Δ ${j.ASI.d24??"—"})
+ALT/BTC: ETH ${f(j.ALT.ETH,5)} | SOL ${f(j.ALT.SOL,6)} | XRP ${f(j.ALT.XRP,8)}
+OI:  ${f(j.OI.v,0)} BTC (Δ ${f(j.OI.d24,2)}%)
+LIQ(1H):  $${f(j.LIQ.h1.usd/1e6,2)}M (L ${f(j.LIQ.h1.long_usd/1e6,2)}M / S ${f(j.LIQ.h1.short_usd/1e6,2)}M) [n=${j.LIQ.h1.n}]
+LIQ(4H):  $${f(j.LIQ.h4.usd/1e6,2)}M (L ${f(j.LIQ.h4.long_usd/1e6,2)}M / S ${f(j.LIQ.h4.short_usd/1e6,2)}M) [n=${j.LIQ.h4.n}]
+LIQ(24H): $${f(j.LIQ.h24.usd/1e6,2)}M (L ${f(j.LIQ.h24.long_usd/1e6,2)}M / S ${f(j.LIQ.h24.short_usd/1e6,2)}M) [n=${j.LIQ.h24.n}]
+LS(1H): ${f(j.LS.long,2)} / ${f(j.LS.short,2)}
+
+7D
+BD:  ${f(j.BD.d7_base,2)}%→${f(j.BD.v,2)}% (Δ ${f(j.BD.d7,2)}%)
+ASI: ${j.ASI.d7_base??"—"}→${j.ASI.v??"—"} (Δ ${j.ASI.d7??"—"})
+ALT/BTC: ETH ${f(j.ALTd7.ETH,2)}% | SOL ${f(j.ALTd7.SOL,2)}% | XRP ${f(j.ALTd7.XRP,2)}%
+OI:  ${f(j.OId7.base,0)}→${f(j.OI.v,0)} BTC (Δ ${f(j.OId7.d,2)}%)
+
+30D
+BD:  ${f(j.BD.d30_base,2)}%→${f(j.BD.v,2)}% (Δ ${f(j.BD.d30,2)}%)
+ASI: ${j.ASI.d30_base??"—"}→${j.ASI.v??"—"} (Δ ${j.ASI.d30??"—"})
+ALT/BTC: ETH ${f(j.ALTd30.ETH,2)}% | SOL ${f(j.ALTd30.SOL,2)}% | XRP ${f(j.ALTd30.XRP,2)}%
+OI:  ${f(j.OId30.base,0)}→${f(j.OI.v,0)} BTC (Δ ${f(j.OId30.d,2)}%)
+
+1Y
+BD:  ${f(j.BD.d365_base,2)}%→${f(j.BD.v,2)}% (Δ ${f(j.BD.d365,2)}%)
+ASI: ${j.ASI.d365_base??"—"}→${j.ASI.v??"—"} (Δ ${j.ASI.d365??"—"})
+ALT/BTC: ETH ${f(j.ALTd365.ETH,2)}% | SOL ${f(j.ALTd365.SOL,2)}% | XRP ${f(j.ALTd365.XRP,2)}%
+OI:  ${f(j.OId365.base,0)}→${f(j.OI.v,0)} BTC (Δ ${f(j.OId365.d,2)}%)
+`;
+    m.textContent=`Updated: ${j.ts} UTC`;
+  }catch(e){
+    t.textContent="Error loading data.json";
+    m.textContent=e.message;
+  }
+})();
+</script>
