@@ -8,12 +8,15 @@ def get(url):
                 return r.read()
         except:
             time.sleep(2)
-    raise RuntimeError(f"Failed fetch: {url}")
+    return None  # never hard-fail
 
 def jget(url):
-    return json.loads(get(url))
+    data = get(url)
+    return json.loads(data) if data else None
 
 def asi_from_html(html):
+    if not html:
+        return None
     s = html.decode("utf-8", "ignore")
     m = re.search(r"Altcoin Season Index[^0-9]{0,400}(\d{1,3})", s, re.I)
     if not m:
@@ -40,36 +43,54 @@ def main():
     CG = "https://api.coingecko.com/api/v3"
     BIN = "https://fapi.binance.com"
 
-    bd = jget(f"{CG}/global")["data"]["market_cap_percentage"]["btc"]
+    hist = load_hist()
 
+    # BTC Dominance
+    g = jget(f"{CG}/global")
+    bd = g["data"]["market_cap_percentage"]["btc"] if g else (hist[-1]["BD"] if hist else None)
+
+    # Prices
     p = jget(f"{CG}/simple/price?ids=bitcoin,ethereum,solana,ripple&vs_currencies=usd")
-    btc,eth,sol,xrp = p["bitcoin"]["usd"],p["ethereum"]["usd"],p["solana"]["usd"],p["ripple"]["usd"]
-    alt = {"ETH":eth/btc,"SOL":sol/btc,"XRP":xrp/btc}
+    if p:
+        btc,eth,sol,xrp = p["bitcoin"]["usd"],p["ethereum"]["usd"],p["solana"]["usd"],p["ripple"]["usd"]
+        alt = {"ETH":eth/btc,"SOL":sol/btc,"XRP":xrp/btc}
+    else:
+        alt = hist[-1]["ALT"] if hist else {"ETH":None,"SOL":None,"XRP":None}
 
-    oi = float(jget(f"{BIN}/fapi/v1/openInterest?symbol=BTCUSDT")["openInterest"])
+    # Open Interest (safe fallback)
+    oi_raw = jget(f"{BIN}/fapi/v1/openInterest?symbol=BTCUSDT")
+    oi = float(oi_raw["openInterest"]) if oi_raw else (hist[-1]["OI"] if hist else None)
 
-    ls = jget(f"{BIN}/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=1h&limit=1")[0]
-    ls = {"long":float(ls["longAccount"])*100,"short":float(ls["shortAccount"])*100}
+    # Long / Short
+    ls_raw = jget(f"{BIN}/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=1h&limit=1")
+    if ls_raw:
+        r = ls_raw[0]
+        ls = {"long":float(r["longAccount"])*100,"short":float(r["shortAccount"])*100}
+    else:
+        ls = hist[-1].get("LS") if hist else {"long":None,"short":None}
 
-    fo = jget(f"{BIN}/fapi/v1/allForceOrders?symbol=BTCUSDT&limit=1000")
+    # Liquidations (rolling windows)
+    fo = jget(f"{BIN}/fapi/v1/allForceOrders?symbol=BTCUSDT&limit=1000") or []
 
     def sum_liq(sec):
         cut=(now-sec)*1000; L=S=0; n=0
         for o in fo:
-            if o["time"]<cut: continue
-            v=float(o["price"])*float(o["origQty"])
+            if o.get("time",0)<cut: continue
+            v=float(o.get("price",0))*float(o.get("origQty",0))
             if v<=0: continue
             n+=1
-            if o["side"]=="SELL": L+=v
-            if o["side"]=="BUY": S+=v
+            if o.get("side")=="SELL": L+=v
+            if o.get("side")=="BUY": S+=v
         return {"usd":L+S,"long_usd":L,"short_usd":S,"n":n}
 
     liq={"h1":sum_liq(3600),"h4":sum_liq(14400),"h24":sum_liq(86400)}
 
+    # ASI
     asi = asi_from_html(get("https://www.blockchaincenter.net/en/altcoin-season-index/"))
+    if asi is None and hist:
+        asi = hist[-1]["ASI"]
 
-    hist = load_hist()
-    hist.append({"t":now,"BD":bd,"ASI":asi,"ALT":alt,"OI":oi})
+    hist.append({"t":now,"BD":bd,"ASI":asi,"ALT":alt,"OI":oi,"LS":ls})
     save_hist(hist)
 
     def snap(d): 
@@ -79,14 +100,14 @@ def main():
 
     out={
         "ts":datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-        "BD":{"v":bd,"d24":bd-b1.get("BD") if b1 else None,
-              "d7_base":b7.get("BD"),"d7":bd-b7.get("BD") if b7 else None,
-              "d30_base":b30.get("BD"),"d30":bd-b30.get("BD") if b30 else None,
-              "d365_base":b365.get("BD"),"d365":bd-b365.get("BD") if b365 else None},
-        "ASI":{"v":asi,"d24":asi-b1.get("ASI") if asi!=None and b1.get("ASI")!=None else None,
-               "d7_base":b7.get("ASI"),"d7":asi-b7.get("ASI") if asi!=None and b7.get("ASI")!=None else None,
-               "d30_base":b30.get("ASI"),"d30":asi-b30.get("ASI") if asi!=None and b30.get("ASI")!=None else None,
-               "d365_base":b365.get("ASI"),"d365":asi-b365.get("ASI") if asi!=None and b365.get("ASI")!=None else None},
+        "BD":{"v":bd,"d24":bd-b1.get("BD") if b1.get("BD") else None,
+              "d7_base":b7.get("BD"),"d7":bd-b7.get("BD") if b7.get("BD") else None,
+              "d30_base":b30.get("BD"),"d30":bd-b30.get("BD") if b30.get("BD") else None,
+              "d365_base":b365.get("BD"),"d365":bd-b365.get("BD") if b365.get("BD") else None},
+        "ASI":{"v":asi,"d24":asi-b1.get("ASI") if b1.get("ASI")!=None else None,
+               "d7_base":b7.get("ASI"),"d7":asi-b7.get("ASI") if b7.get("ASI")!=None else None,
+               "d30_base":b30.get("ASI"),"d30":asi-b30.get("ASI") if b30.get("ASI")!=None else None,
+               "d365_base":b365.get("ASI"),"d365":asi-b365.get("ASI") if b365.get("ASI")!=None else None},
         "ALT":alt,
         "ALTd7":{k:pct(alt[k],b7.get("ALT",{}).get(k)) for k in alt},
         "ALTd30":{k:pct(alt[k],b30.get("ALT",{}).get(k)) for k in alt},
